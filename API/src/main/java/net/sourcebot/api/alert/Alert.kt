@@ -7,16 +7,20 @@ import net.dv8tion.jda.api.entities.User
 import java.awt.Color
 import java.time.Instant
 
+
 /**
- * An Alert represents an embed with some basic information pre-attached.
- * Alerts should be built for a specific [User]
- * Resultant embeds will be personalized for a [User] by rendering their profile photo as the author thumbnail.
- * Alerts also have a timestamp and footer.
+ * Represents a message that has been personalized for some [User]
+ * Alerts are used as responses to Commands
  */
 interface Alert {
     fun asMessage(user: User): Message
 }
 
+/**
+ * An EmbedAlert represents an embed with some basic information pre-attached.
+ * Resultant embeds will be personalized for a [User] by rendering their profile photo as the author thumbnail.
+ * EmbedAlerts also have a timestamp and footer.
+ */
 abstract class EmbedAlert @JvmOverloads internal constructor(
     protected var title: String,
     protected var description: String? = null

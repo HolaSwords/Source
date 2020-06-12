@@ -9,20 +9,13 @@ import org.slf4j.Logger
 import java.io.File
 import java.io.FileReader
 import java.nio.file.Files
-import kotlin.properties.Delegates
 
 abstract class SourceModule {
     internal lateinit var moduleDescription: ModuleDescription
-    internal lateinit var source: Source
-
     lateinit var logger: Logger
         internal set
 
-    var enabled: Boolean by Delegates.observable(false) { _, old, new ->
-        if (old == new) return@observable
-        if (new) onEnable(source) else onDisable()
-    }
-        internal set
+    var enabled: Boolean = false
 
     val dataFolder: File by lazy {
         File("modules", moduleDescription.name)
@@ -69,7 +62,7 @@ abstract class SourceModule {
      */
     open fun onDisable() = Unit
 
-    fun registerCommands(vararg command: RootCommand) {
+    fun registerCommands(source: Source, vararg command: RootCommand) {
         command.forEach {
             source.commandHandler.registerCommand(this, it)
         }

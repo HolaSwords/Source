@@ -7,7 +7,7 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 class ModuleHandler(internal val source: Source) : ClassLoader() {
-    private val logger = Source.logger
+    private val logger = source.logger
     private val classes = ConcurrentHashMap<String, Class<*>>()
 
     private val loaderIndex = HashMap<String, ModuleClassLoader>()
@@ -71,6 +71,7 @@ class ModuleHandler(internal val source: Source) : ClassLoader() {
         val (name, version) = module.moduleDescription
         module.logger.info("Enabling $name v$version")
         module.enabled = true
+        module.onEnable(source)
     }
 
     fun disableModule(module: SourceModule) {
@@ -78,6 +79,7 @@ class ModuleHandler(internal val source: Source) : ClassLoader() {
         val (name, version) = module.moduleDescription
         module.logger.info("Disabling $name v$version")
         module.enabled = false
+        module.onDisable()
     }
 
     public override fun findClass(name: String): Class<*> = classes.computeIfAbsent(name) {
