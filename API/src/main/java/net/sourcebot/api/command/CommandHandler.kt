@@ -15,10 +15,10 @@ import net.sourcebot.api.permission.PermissionHandler
 import java.util.concurrent.TimeUnit
 
 class CommandHandler(
-    val prefix: String,
-    private val deleteSeconds: Long,
-    private val globalAdmins: Set<String>,
-    private val permissionHandler: PermissionHandler
+        val prefix: String,
+        private val deleteSeconds: Long,
+        private val globalAdmins: Set<String>,
+        private val permissionHandler: PermissionHandler
 ) : AbstractMessageHandler(prefix) {
     private var commandMap = CommandMap<RootCommand>()
 
@@ -27,64 +27,44 @@ class CommandHandler(
     ) {
         val author = message.author
         if (author.isFake || author.isBot) return
+
         val rootCommand = commandMap[label] ?: return
         if (!rootCommand.module.enabled) return
+
         val inGuild = message.channelType == ChannelType.TEXT
         if (rootCommand.guildOnly && !inGuild) {
             return respond(
-                rootCommand,
-                message,
-                GuildOnlyCommandAlert(),
-                rootCommand.cleanupResponse
+                    rootCommand,
+                    message,
+                    GuildOnlyCommandAlert(),
+                    rootCommand.cleanupResponse
             )
         }
+
         val arguments = Arguments(args)
         var command: Command = rootCommand
-        val hasGlobal = author.id in globalAdmins
+        val hasGlobalAdmin = author.id in globalAdmins
+
         do {
-            if (!hasGlobal && command.requiresGlobal) {
-                return respond(
-                    command,
-                    message,
-                    GlobalAdminOnlyAlert(),
-                    command.cleanupResponse
-                )
-            }
-            if (!hasGlobal && command.permission != null) {
-                val permission = command.permission!!
-                if (inGuild) {
-                    val permissionData = permissionHandler.getData(message.guild)
-                    val guild = message.guild
-                    val member = message.member!!
-                    val roles = member.roles.toMutableList().apply {
-                        add(guild.publicRole)
-                    }
-                    if (roles.none { it.hasPermission(Permission.ADMINISTRATOR) }) {
-                        val sourceUser = permissionData.getUser(member)
-                        val sourceRoles = roles.map(permissionData::getRole).toSet()
-                        sourceUser.roles = sourceRoles
-                        val channel = message.channel as TextChannel
-                        if (!permissionHandler.hasPermission(sourceUser, permission, channel)) {
-                            return respond(
+            if (!hasGlobalAdmin) {
+                if (command.requiresGlobal) {
+                    return respond(
+                            command,
+                            message,
+                            GlobalAdminOnlyAlert(),
+                            command.cleanupResponse
+                    )
+                }
+                if (command.permission != null) {
+                    hasPermission(command, message, inGuild)?.run {
+                        return respond(
                                 command,
                                 message,
-                                permissionHandler.getPermissionAlert(
-                                    command.guildOnly,
-                                    message.jda,
-                                    sourceUser,
-                                    permission
-                                ),
+                                this,
                                 command.cleanupResponse
-                            )
-                        }
+                        )
                     }
-                } else if (command.guildOnly) {
-                    return respond(
-                        command,
-                        message,
-                        GuildOnlyCommandAlert(),
-                        command.cleanupResponse
-                    )
+
                 }
             }
             val nextId = arguments.next() ?: break
@@ -95,19 +75,54 @@ class CommandHandler(
             }
             command = nextCommand
         } while (true)
-        val response = try {
+
+
+        kotlin.runCatching {
             command.execute(message, arguments)
-        } catch (exception: Exception) {
-            exception.printStackTrace()
-            if (exception is InvalidSyntaxException) {
-                ErrorAlert(
+        }.recoverCatching {
+            it.printStackTrace()
+            if (it !is InvalidSyntaxException) ExceptionAlert(it)
+            ErrorAlert(
                     "Invalid Syntax!",
-                    "${exception.message!!}\n" +
-                        "**Syntax:** ${getSyntax(command)}"
-                )
-            } else ExceptionAlert(exception)
+                    """${it.message!!}
+                    **Syntax:** ${getSyntax(command)}""".trimIndent()
+            )
+        }.onSuccess {
+            respond(command, message, it, command.cleanupResponse)
         }
-        return respond(command, message, response, command.cleanupResponse)
+    }
+
+    private fun hasPermission(command: Command, message: Message, inGuild: Boolean): Alert? {
+        val permission = command.permission!!
+        if (!inGuild && command.guildOnly) {
+            return GuildOnlyCommandAlert()
+        }
+
+        if (!inGuild) return null
+
+        val permissionData = permissionHandler.getData(message.guild)
+        val guild = message.guild
+        val member = message.member!!
+        val roles = member.roles.toMutableList().apply {
+            add(guild.publicRole)
+        }
+
+        if (roles.none { it.hasPermission(Permission.ADMINISTRATOR) }) {
+            val sourceUser = permissionData.getUser(member)
+            val sourceRoles = roles.map(permissionData::getRole).toSet()
+            sourceUser.roles = sourceRoles
+            val channel = message.channel as TextChannel
+            if (!permissionHandler.hasPermission(sourceUser, permission, channel)) {
+                return permissionHandler.getPermissionAlert(
+                        command.guildOnly,
+                        message.jda,
+                        sourceUser,
+                        permission
+                )
+            }
+        }
+
+        return null
     }
 
     private fun respond(command: Command, message: Message, alert: Alert, cleanup: Boolean) {
@@ -124,14 +139,14 @@ class CommandHandler(
     fun getSyntax(command: Command) = "$prefix${command.usage}".trim()
 
     fun getCommands(
-        module: SourceModule
+            module: SourceModule
     ) = commandMap.getCommands().filter { it.module == module }
 
     fun getCommand(name: String) = commandMap[name.toLowerCase()]
 
     fun registerCommands(
-        module: SourceModule,
-        vararg command: RootCommand
+            module: SourceModule,
+            vararg command: RootCommand
     ) = command.forEach {
         it.module = module
         commandMap.register(it)
@@ -143,6 +158,6 @@ class CommandHandler(
      * Called when a user uses a command marked as guildOnly outside of a Guild (i.e Direct Message)
      */
     private class GuildOnlyCommandAlert : ErrorAlert(
-        "Guild Only Command!", "This command may not be used outside of a guild!"
+            "Guild Only Command!", "This command may not be used outside of a guild!"
     )
 }
